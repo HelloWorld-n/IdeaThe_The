@@ -33,7 +33,7 @@ class ProcessClient is ProcessNotify
 		main = arg_main
 
 	fun ref stdout(process: ProcessMonitor ref, data: Array[U8] iso) =>
-		let out = String.from_array(consume data)
+		let out: String = String.from_array(consume data).substring(0, -1)
 		env.err.print(out)
 		match out
 		| "improve" =>
