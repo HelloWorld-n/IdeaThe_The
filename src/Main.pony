@@ -1,12 +1,61 @@
 use "backpressure"
 use "process"
 use "files"
+use "json"
 
 actor Main
 	var value: I64 = 0
+	var env: Env
 
-	new create(env: Env) =>
-		let client = ProcessClient(env, this)
+	fun save() =>
+		let path = FilePath(FileAuth(env.root), "./.data.json")
+		match File(path)
+		| let file: File =>
+			let data: JsonObject = JsonObject
+			data.data.update("value", value)
+			let string''' = data.string("\t", true)
+			file.write(string''')
+			file.set_length(string'''.size())
+			file.flush()
+			env.err.print(string''')
+			consume file
+		end
+
+	fun ref load() =>
+		let path = FilePath(FileAuth(env.root), "./.data.json")
+		var json_string = ""
+		let json_doc = JsonDoc
+		match OpenFile(path)
+		| let file: File =>
+			while file.errno() is FileOK do
+				json_string = json_string + file.read_string(1024)
+			end
+		else
+			env.err.print("Unable to load!")
+		end
+		json_string = json_string
+		
+
+		try
+			json_doc.parse(json_string)?
+		else
+			env.err.print(json_string)
+		end
+		
+		try
+			var json_object: JsonObject = (
+				match json_doc.data
+				| let obj: JsonObject =>
+					obj
+				else
+					error
+				end
+			)
+			value = JsonUtil.fetch_data_i64(json_object, "value")?
+		end
+
+	fun util_new() => 
+		let client = ProcessClient(env)
 		let notifier: ProcessNotify iso = consume client
 		let path = FilePath(FileAuth(env.root), "/bin/xmessage")
 		let args: Array[String] val = [
@@ -24,20 +73,33 @@ actor Main
 		)
 		pm.done_writing()
 
+	new create(arg_env: Env) =>
+		env = arg_env
+		load()
+		util_new()
+	
+	new improve(arg_env: Env) =>
+		env = arg_env
+		load()
+		value = value + 1
+		save()
+		util_new()
+
+	
+		
+
 class ProcessClient is ProcessNotify
 	let env: Env
-	let main: Main
 
-	new iso create(arg_env: Env, arg_main: Main) =>
+	new iso create(arg_env: Env) =>
 		env = arg_env
-		main = arg_main
 
 	fun ref stdout(process: ProcessMonitor ref, data: Array[U8] iso) =>
 		let out: String = String.from_array(consume data).substring(0, -1)
 		env.err.print(out)
 		match out
 		| "improve" =>
-			env.out.print("Improved!")
+			let main = Main.improve(env)
 		else 
 			env.out.print("<*>")
 		end
